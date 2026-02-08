@@ -44,15 +44,12 @@ interface DashboardData {
     };
   };
   network: {
-    hashRate: number;
+    hash_rate: number;
     difficulty: number;
-    blockHeight: number;
-    nextHalving: {
-      block: number;
-      blocksRemaining: number;
-      estimatedDate: string;
-      daysRemaining: number;
-    };
+    block_height: number;
+    blocks_until_halving: number;
+    estimated_halving_date: string;
+    avg_block_time: number;
   };
   history: Array<{ timestamp: number; price: number }>;
 }
@@ -317,7 +314,7 @@ export default function Dashboard() {
             <div className="flex justify-between items-center">
               <span className="text-gray-400">Hash Rate</span>
               <span className="font-mono text-orange-400">
-                {formatHashRate(data.network.hashRate)}
+                {formatHashRate(data.network.hash_rate * 1e18)}
               </span>
             </div>
             <div className="flex justify-between items-center">
@@ -327,7 +324,7 @@ export default function Dashboard() {
             <div className="flex justify-between items-center">
               <span className="text-gray-400">Block Height</span>
               <span className="font-mono text-green-400">
-                #{data.network.blockHeight.toLocaleString()}
+                #{data.network.block_height.toLocaleString()}
               </span>
             </div>
             <div className="flex justify-between items-center">
@@ -344,18 +341,18 @@ export default function Dashboard() {
           <h2 className="text-xl font-semibold mb-4">⏱️ Next Halving</h2>
           <div className="text-center">
             <p className="text-5xl font-bold text-orange-400 mb-2">
-              {data.network.nextHalving.daysRemaining}
+              {Math.floor(data.network.blocks_until_halving * data.network.avg_block_time / 86400)}
             </p>
             <p className="text-gray-400 text-lg mb-4">days remaining</p>
             <div className="text-sm text-gray-500 space-y-1">
               <p>
-                Block #{data.network.nextHalving.block.toLocaleString()}
+                Block #{(data.network.block_height + data.network.blocks_until_halving).toLocaleString()}
               </p>
               <p>
-                ~{data.network.nextHalving.blocksRemaining.toLocaleString()} blocks to go
+                ~{data.network.blocks_until_halving.toLocaleString()} blocks to go
               </p>
               <p className="text-orange-400">
-                Est. {new Date(data.network.nextHalving.estimatedDate).toLocaleDateString('en-US', {
+                Est. {new Date(data.network.estimated_halving_date).toLocaleDateString('en-US', {
                   year: 'numeric',
                   month: 'long',
                   day: 'numeric'
