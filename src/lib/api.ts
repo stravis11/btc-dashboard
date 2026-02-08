@@ -218,41 +218,45 @@ export async function fetchNews(limit: number = 5): Promise<NewsItem[]> {
   if (cached) return cached.slice(0, limit);
 
   try {
-    // Try CoinGecko's status updates as news source (always available)
+    // Use CoinGecko's news endpoint (free, no API key needed)
     const response = await fetch(
-      'https://api.coingecko.com/api/v3/coins/bitcoin?localization=false&tickers=false&community_data=true&developer_data=false'
+      'https://api.coingecko.com/api/v3/news?per_page=10'
     );
 
     if (response.ok) {
       const data = await response.json();
-      // Use status updates if available
-      const updates = data.status_updates || [];
-      if (updates.length > 0) {
-        const result: NewsItem[] = updates.slice(0, 10).map((item: {
-          description: string;
-          project: { name: string };
-          created_at: string;
-        }) => ({
-          title: item.description?.slice(0, 100) || 'Bitcoin Update',
-          url: 'https://www.coingecko.com/en/coins/bitcoin',
-          source: item.project?.name || 'CoinGecko',
-          published_at: item.created_at,
-        }));
-        setCache('news', result);
-        return result.slice(0, limit);
+      if (data.data && data.data.length > 0) {
+        const result: NewsItem[] = data.data
+          .filter((item: { title?: string }) => 
+            item.title?.toLowerCase().includes('bitcoin') || 
+            item.title?.toLowerCase().includes('btc') ||
+            item.title?.toLowerCase().includes('crypto')
+          )
+          .slice(0, 10)
+          .map((item: {
+            title: string;
+            url: string;
+            news_site: string;
+            created_at: string;
+          }) => ({
+            title: item.title,
+            url: item.url,
+            source: item.news_site || 'CoinGecko News',
+            published_at: item.created_at,
+          }));
+        
+        if (result.length > 0) {
+          setCache('news', result);
+          return result.slice(0, limit);
+        }
       }
     }
   } catch (e) {
     console.error('News fetch error:', e);
   }
 
-  // Fallback: Return placeholder - frontend should show "Add news API key for live updates"
-  return [{
-    title: 'Configure news API for live Bitcoin headlines',
-    url: 'https://cryptopanic.com/developers/api/',
-    source: 'Setup Required',
-    published_at: new Date().toISOString(),
-  }];
+  // Fallback: Return empty array - frontend will hide the section
+  return [];
 }
 
 // ============================================

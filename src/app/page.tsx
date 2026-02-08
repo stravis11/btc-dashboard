@@ -52,6 +52,7 @@ interface DashboardData {
     avg_block_time: number;
   };
   history: Array<{ timestamp: number; price: number }>;
+  news: Array<{ title: string; url: string; source: string; published_at: string }>;
 }
 
 function formatNumber(num: number): string {
@@ -362,6 +363,30 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Bitcoin News */}
+      {data.news && data.news.length > 0 && data.news[0].source !== 'Setup Required' && (
+        <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800 mb-8">
+          <h2 className="text-xl font-semibold mb-4">📰 Bitcoin News</h2>
+          <div className="space-y-4">
+            {data.news.slice(0, 5).map((item, index) => (
+              <a
+                key={index}
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block p-4 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                <h3 className="text-white font-medium mb-1 line-clamp-2">{item.title}</h3>
+                <div className="flex justify-between items-center text-sm text-gray-400">
+                  <span>{item.source}</span>
+                  <span>{new Date(item.published_at).toLocaleDateString()}</span>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="text-center text-gray-600 text-sm">
