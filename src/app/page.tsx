@@ -54,7 +54,7 @@ interface DashboardData {
       daysRemaining: number;
     };
   };
-  history: Array<{ date: string; price: number }>;
+  history: Array<{ timestamp: number; price: number }>;
 }
 
 function formatNumber(num: number): string {
@@ -109,7 +109,7 @@ export default function Dashboard() {
         const dashData = await dashRes.json();
         const historyData = await historyRes.json();
         
-        setData({ ...dashData, history: historyData.prices || [] });
+        setData({ ...dashData, history: Array.isArray(historyData) ? historyData : historyData.prices || [] });
         setLoading(false);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error');
@@ -149,7 +149,7 @@ export default function Dashboard() {
 
   const chartData = {
     labels: data.history.map(h => {
-      const date = new Date(h.date);
+      const date = new Date(h.timestamp);
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }),
     datasets: [
