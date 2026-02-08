@@ -218,37 +218,28 @@ export async function fetchNews(limit: number = 5): Promise<NewsItem[]> {
   if (cached) return cached.slice(0, limit);
 
   try {
-    // Use CoinGecko's news endpoint (free, no API key needed)
+    // Use CryptoCompare's free news API (no API key needed for basic access)
     const response = await fetch(
-      'https://api.coingecko.com/api/v3/news?per_page=10'
+      'https://min-api.cryptocompare.com/data/v2/news/?lang=EN&categories=BTC'
     );
 
     if (response.ok) {
       const data = await response.json();
-      if (data.data && data.data.length > 0) {
-        const result: NewsItem[] = data.data
-          .filter((item: { title?: string }) => 
-            item.title?.toLowerCase().includes('bitcoin') || 
-            item.title?.toLowerCase().includes('btc') ||
-            item.title?.toLowerCase().includes('crypto')
-          )
-          .slice(0, 10)
-          .map((item: {
-            title: string;
-            url: string;
-            news_site: string;
-            created_at: string;
-          }) => ({
-            title: item.title,
-            url: item.url,
-            source: item.news_site || 'CoinGecko News',
-            published_at: item.created_at,
-          }));
+      if (data.Data && data.Data.length > 0) {
+        const result: NewsItem[] = data.Data.slice(0, 10).map((item: {
+          title: string;
+          url: string;
+          source: string;
+          published_on: number;
+        }) => ({
+          title: item.title,
+          url: item.url,
+          source: item.source,
+          published_at: new Date(item.published_on * 1000).toISOString(),
+        }));
         
-        if (result.length > 0) {
-          setCache('news', result);
-          return result.slice(0, limit);
-        }
+        setCache('news', result);
+        return result.slice(0, limit);
       }
     }
   } catch (e) {
