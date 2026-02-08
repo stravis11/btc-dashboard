@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground: #ffffff;
+  --background: #0f0f0f;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Fear & Greed colors */
+.fear-extreme { color: #ea3943; }
+.fear { color: #ea8c00; }
+.neutral { color: #c3c3c3; }
+.greed { color: #93d900; }
+.greed-extreme { color: #16c784; }
