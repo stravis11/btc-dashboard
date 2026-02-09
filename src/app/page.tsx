@@ -179,7 +179,13 @@ export default function Dashboard() {
   const chartData = {
     labels: data.history.map(h => {
       const date = new Date(h.timestamp);
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      if (historyPeriod === '24h') {
+        return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      } else if (historyPeriod === '7d') {
+        return date.toLocaleDateString('en-US', { weekday: 'short', hour: 'numeric' });
+      } else {
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
     }),
     datasets: [
       {
