@@ -283,18 +283,16 @@ export interface DashboardData {
 }
 
 export async function fetchDashboardData(): Promise<DashboardData> {
-  const [price, fearGreed, network, news, history24h, history7d, history30d, history90d, history180d, history1y, historyMax] = await Promise.all([
+  // Note: CoinGecko free tier limits to 365 days max
+  // Fetching common periods; frontend can request others via /api/history
+  const [price, fearGreed, network, news, history7d, history30d, history90d] = await Promise.all([
     fetchBtcPrice(),
     fetchFearGreed(),
     fetchNetworkStats(),
     fetchNews(5),
-    fetchPriceHistory(1),    // 24 hours
     fetchPriceHistory(7),
     fetchPriceHistory(30),
     fetchPriceHistory(90),
-    fetchPriceHistory(180),
-    fetchPriceHistory(365),  // 1 year
-    fetchPriceHistory('max'), // All time
   ]);
 
   return {
@@ -303,13 +301,13 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     network,
     news,
     priceHistory: {
-      '24h': history24h,
+      '24h': [], // Loaded on-demand
       '7d': history7d,
       '30d': history30d,
       '90d': history90d,
-      '180d': history180d,
-      '1y': history1y,
-      'max': historyMax,
+      '180d': [], // Loaded on-demand
+      '1y': [],   // Loaded on-demand (max 365 days on free tier)
+      'max': [],  // Not available on free CoinGecko tier
     },
   };
 }

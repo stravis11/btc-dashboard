@@ -58,15 +58,15 @@ interface DashboardData {
   news: Array<{ title: string; url: string; source: string; published_at: string }>;
 }
 
-type HistoryPeriod = '24h' | '7d' | '30d' | '90d' | '180d' | '1y' | 'max';
-const HISTORY_OPTIONS: { label: string; value: HistoryPeriod; days: number | 'max' }[] = [
+type HistoryPeriod = '24h' | '7d' | '30d' | '90d' | '180d' | '1y';
+const HISTORY_OPTIONS: { label: string; value: HistoryPeriod; days: number }[] = [
   { label: '24H', value: '24h', days: 1 },
   { label: '7D', value: '7d', days: 7 },
   { label: '30D', value: '30d', days: 30 },
   { label: '90D', value: '90d', days: 90 },
   { label: '180D', value: '180d', days: 180 },
   { label: '1Y', value: '1y', days: 365 },
-  { label: 'ALL', value: 'max', days: 'max' },
+  // Note: 'ALL' removed - CoinGecko free tier limited to 365 days
 ];
 
 function formatNumber(num: number): string {
