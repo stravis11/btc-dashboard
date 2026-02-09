@@ -108,52 +108,48 @@ export default function Dashboard() {
   
   const historyDays = HISTORY_OPTIONS.find(o => o.value === historyPeriod)?.days || 30;
 
-  // Initial data fetch
+  // Fetch dashboard data once on mount
   useEffect(() => {
-    async function fetchInitialData() {
+    async function fetchDashboard() {
       try {
-        const [dashRes, historyRes] = await Promise.all([
-          fetch('/api/dashboard'),
-          fetch(`/api/history?days=30`)
-        ]);
-        
-        if (!dashRes.ok || !historyRes.ok) {
-          throw new Error('Failed to fetch data');
-        }
-        
-        const dashData = await dashRes.json();
-        const historyData = await historyRes.json();
-        
-        setData({ ...dashData, history: Array.isArray(historyData) ? historyData : historyData.prices || [] });
-        setLoading(false);
+        const res = await fetch('/api/dashboard');
+        if (!res.ok) throw new Error('Failed to fetch data');
+        const dashData = await res.json();
+        setData(prev => ({ ...dashData, history: prev?.history || [] }));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error');
-        setLoading(false);
       }
     }
 
-    fetchInitialData();
-    const interval = setInterval(fetchInitialData, 60000); // Refresh every minute
+    fetchDashboard();
+    const interval = setInterval(fetchDashboard, 60000);
     return () => clearInterval(interval);
   }, []);
 
-  // Update history when period changes
+  // Fetch history whenever period changes
   useEffect(() => {
-    if (loading) return; // Don't fetch while initial load is happening
-    
     async function fetchHistory() {
       try {
-        const historyRes = await fetch(`/api/history?days=${historyDays}`);
-        if (!historyRes.ok) throw new Error('Failed to fetch history');
-        const historyData = await historyRes.json();
-        setData(prev => prev ? { ...prev, history: Array.isArray(historyData) ? historyData : historyData.prices || [] } : null);
+        const res = await fetch(`/api/history?days=${historyDays}`);
+        if (!res.ok) throw new Error('Failed to fetch history');
+        const historyData = await res.json();
+        const history = Array.isArray(historyData) ? historyData : historyData.prices || [];
+        setData(prev => {
+          if (!prev) {
+            setLoading(false);
+            return { history } as DashboardData;
+          }
+          setLoading(false);
+          return { ...prev, history };
+        });
       } catch (err) {
         console.error('History fetch error:', err);
+        setLoading(false);
       }
     }
 
     fetchHistory();
-  }, [historyPeriod, historyDays, loading]);
+  }, [historyDays]);
 
   if (loading) {
     return (
