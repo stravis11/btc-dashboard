@@ -42,6 +42,9 @@ interface DashboardData {
       value: number;
       value_classification: string;
     };
+    avg_7d: number;
+    avg_30d: number;
+    avg_90d: number;
   };
   network: {
     hash_rate: number;
@@ -54,6 +57,17 @@ interface DashboardData {
   history: Array<{ timestamp: number; price: number }>;
   news: Array<{ title: string; url: string; source: string; published_at: string }>;
 }
+
+type HistoryPeriod = '24h' | '7d' | '30d' | '90d' | '180d' | '1y' | 'max';
+const HISTORY_OPTIONS: { label: string; value: HistoryPeriod; days: number | 'max' }[] = [
+  { label: '24H', value: '24h', days: 1 },
+  { label: '7D', value: '7d', days: 7 },
+  { label: '30D', value: '30d', days: 30 },
+  { label: '90D', value: '90d', days: 90 },
+  { label: '180D', value: '180d', days: 180 },
+  { label: '1Y', value: '1y', days: 365 },
+  { label: 'ALL', value: 'max', days: 'max' },
+];
 
 function formatNumber(num: number): string {
   if (num >= 1e12) return (num / 1e12).toFixed(2) + 'T';
@@ -90,7 +104,9 @@ export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [historyDays, setHistoryDays] = useState(30);
+  const [historyPeriod, setHistoryPeriod] = useState<HistoryPeriod>('30d');
+  
+  const historyDays = HISTORY_OPTIONS.find(o => o.value === historyPeriod)?.days || 30;
 
   useEffect(() => {
     async function fetchData() {
@@ -118,7 +134,7 @@ export default function Dashboard() {
     fetchData();
     const interval = setInterval(fetchData, 60000); // Refresh every minute
     return () => clearInterval(interval);
-  }, [historyDays]);
+  }, [historyPeriod, historyDays]);
 
   if (loading) {
     return (
@@ -237,9 +253,9 @@ export default function Dashboard() {
         </div>
 
         {/* Fear & Greed Card */}
-        <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800">
+        <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800 col-span-1 md:col-span-2">
           <p className="text-gray-400 text-sm mb-3">Fear & Greed Index</p>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 mb-4">
             <span className="text-4xl">{getFearGreedEmoji(data.fearGreed.current.value)}</span>
             <div>
               <span 
@@ -257,7 +273,7 @@ export default function Dashboard() {
             </div>
           </div>
           {/* Fear/Greed Bar */}
-          <div className="mt-4 h-2 bg-gray-800 rounded-full overflow-hidden">
+          <div className="h-2 bg-gray-800 rounded-full overflow-hidden mb-4">
             <div 
               className="h-full rounded-full transition-all duration-500"
               style={{ 
@@ -265,6 +281,27 @@ export default function Dashboard() {
                 background: `linear-gradient(90deg, #ea3943, #f3d42f, #16c784)`,
               }}
             />
+          </div>
+          {/* Historical Averages */}
+          <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-800">
+            <div className="text-center">
+              <p className="text-gray-500 text-xs mb-1">7D Avg</p>
+              <p className="text-lg font-bold" style={{ color: getFearGreedColor(data.fearGreed.avg_7d) }}>
+                {data.fearGreed.avg_7d}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-gray-500 text-xs mb-1">30D Avg</p>
+              <p className="text-lg font-bold" style={{ color: getFearGreedColor(data.fearGreed.avg_30d) }}>
+                {data.fearGreed.avg_30d}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-gray-500 text-xs mb-1">90D Avg</p>
+              <p className="text-lg font-bold" style={{ color: getFearGreedColor(data.fearGreed.avg_90d) }}>
+                {data.fearGreed.avg_90d}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -283,20 +320,20 @@ export default function Dashboard() {
 
       {/* Chart Section */}
       <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800 mb-8">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
           <h2 className="text-xl font-semibold">Price History</h2>
-          <div className="flex gap-2">
-            {[7, 30, 90].map(days => (
+          <div className="flex gap-1 flex-wrap">
+            {HISTORY_OPTIONS.map(option => (
               <button
-                key={days}
-                onClick={() => setHistoryDays(days)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  historyDays === days
+                key={option.value}
+                onClick={() => setHistoryPeriod(option.value)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  historyPeriod === option.value
                     ? 'bg-orange-500 text-white'
                     : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                 }`}
               >
-                {days}D
+                {option.label}
               </button>
             ))}
           </div>

@@ -79,7 +79,7 @@ export interface PriceHistoryPoint {
   price: number;
 }
 
-export async function fetchPriceHistory(days: number = 30): Promise<PriceHistoryPoint[]> {
+export async function fetchPriceHistory(days: number | 'max' = 30): Promise<PriceHistoryPoint[]> {
   const cacheKey = `price_history_${days}`;
   const cached = getCached<PriceHistoryPoint[]>(cacheKey);
   if (cached) return cached;
@@ -112,17 +112,21 @@ export interface FearGreedData {
   timestamp: number;
 }
 
-export interface FearGreedResponse {
+export interface FearGreedHistorical {
   current: FearGreedData;
+  avg_7d: number;
+  avg_30d: number;
+  avg_90d: number;
   history: FearGreedData[];
 }
 
-export async function fetchFearGreed(): Promise<FearGreedResponse> {
-  const cached = getCached<FearGreedResponse>('fear_greed');
+export async function fetchFearGreed(): Promise<FearGreedHistorical> {
+  const cached = getCached<FearGreedHistorical>('fear_greed');
   if (cached) return cached;
 
+  // Fetch 90 days of data for historical averages
   const response = await fetch(
-    'https://api.alternative.me/fng/?limit=31'
+    'https://api.alternative.me/fng/?limit=90'
   );
 
   if (!response.ok) {
@@ -130,14 +134,22 @@ export async function fetchFearGreed(): Promise<FearGreedResponse> {
   }
 
   const data = await response.json();
-  const entries = data.data.map((item: { value: string; value_classification: string; timestamp: string }) => ({
+  const entries: FearGreedData[] = data.data.map((item: { value: string; value_classification: string; timestamp: string }) => ({
     value: parseInt(item.value, 10),
     value_classification: item.value_classification,
     timestamp: parseInt(item.timestamp, 10) * 1000, // Convert to ms
   }));
 
-  const result: FearGreedResponse = {
+  // Calculate averages
+  const avg7d = entries.slice(0, 7).reduce((sum, e) => sum + e.value, 0) / Math.min(7, entries.length);
+  const avg30d = entries.slice(0, 30).reduce((sum, e) => sum + e.value, 0) / Math.min(30, entries.length);
+  const avg90d = entries.reduce((sum, e) => sum + e.value, 0) / entries.length;
+
+  const result: FearGreedHistorical = {
     current: entries[0],
+    avg_7d: Math.round(avg7d),
+    avg_30d: Math.round(avg30d),
+    avg_90d: Math.round(avg90d),
     history: entries,
   };
 
@@ -256,25 +268,33 @@ export async function fetchNews(limit: number = 5): Promise<NewsItem[]> {
 
 export interface DashboardData {
   price: PriceData;
-  fearGreed: FearGreedResponse;
+  fearGreed: FearGreedHistorical;
   network: NetworkStats;
   news: NewsItem[];
   priceHistory: {
+    '24h': PriceHistoryPoint[];
     '7d': PriceHistoryPoint[];
     '30d': PriceHistoryPoint[];
     '90d': PriceHistoryPoint[];
+    '180d': PriceHistoryPoint[];
+    '1y': PriceHistoryPoint[];
+    'max': PriceHistoryPoint[];
   };
 }
 
 export async function fetchDashboardData(): Promise<DashboardData> {
-  const [price, fearGreed, network, news, history7d, history30d, history90d] = await Promise.all([
+  const [price, fearGreed, network, news, history24h, history7d, history30d, history90d, history180d, history1y, historyMax] = await Promise.all([
     fetchBtcPrice(),
     fetchFearGreed(),
     fetchNetworkStats(),
     fetchNews(5),
+    fetchPriceHistory(1),    // 24 hours
     fetchPriceHistory(7),
     fetchPriceHistory(30),
     fetchPriceHistory(90),
+    fetchPriceHistory(180),
+    fetchPriceHistory(365),  // 1 year
+    fetchPriceHistory('max'), // All time
   ]);
 
   return {
@@ -283,9 +303,13 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     network,
     news,
     priceHistory: {
+      '24h': history24h,
       '7d': history7d,
       '30d': history30d,
       '90d': history90d,
+      '180d': history180d,
+      '1y': history1y,
+      'max': historyMax,
     },
   };
 }
