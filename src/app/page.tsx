@@ -108,12 +108,13 @@ export default function Dashboard() {
   
   const historyDays = HISTORY_OPTIONS.find(o => o.value === historyPeriod)?.days || 30;
 
+  // Initial data fetch
   useEffect(() => {
-    async function fetchData() {
+    async function fetchInitialData() {
       try {
         const [dashRes, historyRes] = await Promise.all([
           fetch('/api/dashboard'),
-          fetch(`/api/history?days=${historyDays}`)
+          fetch(`/api/history?days=30`)
         ]);
         
         if (!dashRes.ok || !historyRes.ok) {
@@ -131,10 +132,28 @@ export default function Dashboard() {
       }
     }
 
-    fetchData();
-    const interval = setInterval(fetchData, 60000); // Refresh every minute
+    fetchInitialData();
+    const interval = setInterval(fetchInitialData, 60000); // Refresh every minute
     return () => clearInterval(interval);
-  }, [historyPeriod, historyDays]);
+  }, []);
+
+  // Update history when period changes
+  useEffect(() => {
+    if (loading) return; // Don't fetch while initial load is happening
+    
+    async function fetchHistory() {
+      try {
+        const historyRes = await fetch(`/api/history?days=${historyDays}`);
+        if (!historyRes.ok) throw new Error('Failed to fetch history');
+        const historyData = await historyRes.json();
+        setData(prev => prev ? { ...prev, history: Array.isArray(historyData) ? historyData : historyData.prices || [] } : null);
+      } catch (err) {
+        console.error('History fetch error:', err);
+      }
+    }
+
+    fetchHistory();
+  }, [historyPeriod, historyDays, loading]);
 
   if (loading) {
     return (
