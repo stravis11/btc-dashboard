@@ -8,8 +8,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const days = parseInt(searchParams.get('days') || '30', 10);
     
-    // Validate days parameter
-    const validDays = [7, 30, 90, 365];
+    // Validate days parameter (1=24h, 7, 30, 90, 180, 365=1Y)
+    const validDays = [1, 7, 30, 90, 180, 365];
     const actualDays = validDays.includes(days) ? days : 30;
     
     const data = await fetchPriceHistory(actualDays);
