@@ -4,25 +4,62 @@
  */
 
 // Cache configuration
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+// SHORT = fresh return (5 min), STALE = serve but refresh (15 min), MAX = discard and fetch (60 min)
+const CACHE_SHORT = 5 * 60 * 1000;  // 5 minutes
+const CACHE_STALE = 15 * 60 * 1000; // 15 minutes
+const CACHE_MAX = 60 * 60 * 1000;   // 60 minutes
 
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
+  isRefreshing: boolean;
 }
 
 const cache = new Map<string, CacheEntry<unknown>>();
 
-function getCached<T>(key: string): T | null {
-  const entry = cache.get(key);
-  if (entry && Date.now() - entry.timestamp < CACHE_DURATION) {
-    return entry.data as T;
-  }
+function getCached<T>(key: string, allowStale = false): T | null {
+  const entry = cache.get(key) as CacheEntry<T> | undefined;
+  if (!entry) return null;
+
+  const age = Date.now() - entry.timestamp;
+  if (age < CACHE_SHORT) return entry.data as T;
+  if (allowStale && age < CACHE_STALE) return entry.data as T;
   return null;
 }
 
 function setCache<T>(key: string, data: T): void {
-  cache.set(key, { data, timestamp: Date.now() });
+  cache.set(key, { data, timestamp: Date.now(), isRefreshing: false });
+}
+
+// Stale-while-revalidate: return stale data immediately, refresh in background
+async function getWithRevalidate<T>(key: string, fetchFn: () => Promise<T>): Promise<T> {
+  const entry = cache.get(key) as CacheEntry<T> | undefined;
+  const now = Date.now();
+
+  if (entry) {
+    const age = now - entry.timestamp;
+    // Fresh enough — return cached, no refresh needed
+    if (age < CACHE_SHORT) return entry.data as T;
+
+    // Stale but nobody is refreshing — start background refresh
+    if (age < CACHE_STALE && !entry.isRefreshing) {
+      entry.isRefreshing = true;
+      fetchFn()
+        .then(data => setCache(key, data))
+        .catch(() => {/* ignore — stale data already returned */})
+        .finally(() => {
+          const e = cache.get(key) as CacheEntry<T> | undefined;
+          if (e) e.isRefreshing = false;
+        });
+    }
+    // Return stale data — refresh is or was running in background
+    return entry.data as T;
+  }
+
+  // Nothing cached — fetch synchronously
+  const data = await fetchFn();
+  setCache(key, data);
+  return data;
 }
 
 // ============================================
@@ -42,32 +79,30 @@ export interface PriceData {
 }
 
 export async function fetchBtcPrice(): Promise<PriceData> {
-  const cached = getCached<PriceData>('btc_price');
-  if (cached) return cached;
+  return getWithRevalidate('btc_price', async () => {
+    const response = await fetch(
+      'https://api.coingecko.com/api/v3/coins/bitcoin?localization=false&tickers=false&community_data=false&developer_data=false'
+    );
 
-  const response = await fetch(
-    'https://api.coingecko.com/api/v3/coins/bitcoin?localization=false&tickers=false&community_data=false&developer_data=false'
-  );
-  
-  if (!response.ok) {
-    throw new Error(`CoinGecko API error: ${response.status}`);
-  }
+    if (!response.ok) {
+      throw new Error(`CoinGecko API error: ${response.status}`);
+    }
 
-  const data = await response.json();
-  const result: PriceData = {
-    price: data.market_data.current_price.usd,
-    price_change_24h: data.market_data.price_change_24h,
-    price_change_percentage_24h: data.market_data.price_change_percentage_24h,
-    high_24h: data.market_data.high_24h.usd,
-    low_24h: data.market_data.low_24h.usd,
-    market_cap: data.market_data.market_cap.usd,
-    total_volume: data.market_data.total_volume.usd,
-    circulating_supply: data.market_data.circulating_supply,
-    last_updated: data.last_updated,
-  };
+    const data = await response.json();
+    const result: PriceData = {
+      price: data.market_data.current_price.usd,
+      price_change_24h: data.market_data.price_change_24h,
+      price_change_percentage_24h: data.market_data.price_change_percentage_24h,
+      high_24h: data.market_data.high_24h.usd,
+      low_24h: data.market_data.low_24h.usd,
+      market_cap: data.market_data.market_cap.usd,
+      total_volume: data.market_data.total_volume.usd,
+      circulating_supply: data.market_data.circulating_supply,
+      last_updated: data.last_updated,
+    };
 
-  setCache('btc_price', result);
-  return result;
+    return result;
+  });
 }
 
 // ============================================
@@ -81,25 +116,23 @@ export interface PriceHistoryPoint {
 
 export async function fetchPriceHistory(days: number | 'max' = 30): Promise<PriceHistoryPoint[]> {
   const cacheKey = `price_history_${days}`;
-  const cached = getCached<PriceHistoryPoint[]>(cacheKey);
-  if (cached) return cached;
+  return getWithRevalidate(cacheKey, async () => {
+    const response = await fetch(
+      `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=${days}`
+    );
 
-  const response = await fetch(
-    `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=${days}`
-  );
+    if (!response.ok) {
+      throw new Error(`CoinGecko API error: ${response.status}`);
+    }
 
-  if (!response.ok) {
-    throw new Error(`CoinGecko API error: ${response.status}`);
-  }
+    const data = await response.json();
+    const result: PriceHistoryPoint[] = data.prices.map(([timestamp, price]: [number, number]) => ({
+      timestamp,
+      price,
+    }));
 
-  const data = await response.json();
-  const result: PriceHistoryPoint[] = data.prices.map(([timestamp, price]: [number, number]) => ({
-    timestamp,
-    price,
-  }));
-
-  setCache(cacheKey, result);
-  return result;
+    return result;
+  });
 }
 
 // ============================================
@@ -121,40 +154,38 @@ export interface FearGreedHistorical {
 }
 
 export async function fetchFearGreed(): Promise<FearGreedHistorical> {
-  const cached = getCached<FearGreedHistorical>('fear_greed');
-  if (cached) return cached;
+  return getWithRevalidate('fear_greed', async () => {
+    // Fetch 90 days of data for historical averages
+    const response = await fetch(
+      'https://api.alternative.me/fng/?limit=90'
+    );
 
-  // Fetch 90 days of data for historical averages
-  const response = await fetch(
-    'https://api.alternative.me/fng/?limit=90'
-  );
+    if (!response.ok) {
+      throw new Error(`Alternative.me API error: ${response.status}`);
+    }
 
-  if (!response.ok) {
-    throw new Error(`Alternative.me API error: ${response.status}`);
-  }
+    const data = await response.json();
+    const entries: FearGreedData[] = data.data.map((item: { value: string; value_classification: string; timestamp: string }) => ({
+      value: parseInt(item.value, 10),
+      value_classification: item.value_classification,
+      timestamp: parseInt(item.timestamp, 10) * 1000, // Convert to ms
+    }));
 
-  const data = await response.json();
-  const entries: FearGreedData[] = data.data.map((item: { value: string; value_classification: string; timestamp: string }) => ({
-    value: parseInt(item.value, 10),
-    value_classification: item.value_classification,
-    timestamp: parseInt(item.timestamp, 10) * 1000, // Convert to ms
-  }));
+    // Calculate averages
+    const avg7d = entries.slice(0, 7).reduce((sum, e) => sum + e.value, 0) / Math.min(7, entries.length);
+    const avg30d = entries.slice(0, 30).reduce((sum, e) => sum + e.value, 0) / Math.min(30, entries.length);
+    const avg90d = entries.reduce((sum, e) => sum + e.value, 0) / entries.length;
 
-  // Calculate averages
-  const avg7d = entries.slice(0, 7).reduce((sum, e) => sum + e.value, 0) / Math.min(7, entries.length);
-  const avg30d = entries.slice(0, 30).reduce((sum, e) => sum + e.value, 0) / Math.min(30, entries.length);
-  const avg90d = entries.reduce((sum, e) => sum + e.value, 0) / entries.length;
+    const result: FearGreedHistorical = {
+      current: entries[0],
+      avg_7d: Math.round(avg7d),
+      avg_30d: Math.round(avg30d),
+      avg_90d: Math.round(avg90d),
+      history: entries,
+    };
 
-  const result: FearGreedHistorical = {
-    current: entries[0],
-    avg_7d: Math.round(avg7d),
-    avg_30d: Math.round(avg30d),
-    avg_90d: Math.round(avg90d),
-    history: entries,
-  };
-
-  setCache('fear_greed', result);
-  return result;
+    return result;
+  });
 }
 
 // ============================================
@@ -175,43 +206,41 @@ const HALVING_INTERVAL = 210000;
 const NEXT_HALVING_BLOCK = 1050000; // Block 1,050,000 (5th halving)
 
 export async function fetchNetworkStats(): Promise<NetworkStats> {
-  const cached = getCached<NetworkStats>('network_stats');
-  if (cached) return cached;
+  return getWithRevalidate('network_stats', async () => {
+    // Fetch multiple stats from blockchain.com
+    const [heightRes, hashRateRes, difficultyRes] = await Promise.all([
+      fetch('https://blockchain.info/q/getblockcount'),
+      fetch('https://blockchain.info/q/hashrate'),
+      fetch('https://blockchain.info/q/getdifficulty'),
+    ]);
 
-  // Fetch multiple stats from blockchain.com
-  const [heightRes, hashRateRes, difficultyRes] = await Promise.all([
-    fetch('https://blockchain.info/q/getblockcount'),
-    fetch('https://blockchain.info/q/hashrate'),
-    fetch('https://blockchain.info/q/getdifficulty'),
-  ]);
+    if (!heightRes.ok || !hashRateRes.ok || !difficultyRes.ok) {
+      throw new Error('Blockchain.info API error');
+    }
 
-  if (!heightRes.ok || !hashRateRes.ok || !difficultyRes.ok) {
-    throw new Error('Blockchain.info API error');
-  }
+    const blockHeight = parseInt(await heightRes.text(), 10);
+    const hashRateRaw = parseFloat(await hashRateRes.text());
+    // Blockchain.info returns GH/s, convert to EH/s for readability
+    const hashRate = hashRateRaw / 1e9; // Convert GH/s to EH/s
+    const difficulty = parseFloat(await difficultyRes.text());
 
-  const blockHeight = parseInt(await heightRes.text(), 10);
-  const hashRateRaw = parseFloat(await hashRateRes.text());
-  // Blockchain.info returns GH/s, convert to EH/s for readability
-  const hashRate = hashRateRaw / 1e9; // Convert GH/s to EH/s
-  const difficulty = parseFloat(await difficultyRes.text());
+    // Calculate halving info
+    const blocksUntilHalving = NEXT_HALVING_BLOCK - blockHeight;
+    const avgBlockTime = 10 * 60; // ~10 minutes in seconds
+    const secondsUntilHalving = blocksUntilHalving * avgBlockTime;
+    const halvingDate = new Date(Date.now() + secondsUntilHalving * 1000);
 
-  // Calculate halving info
-  const blocksUntilHalving = NEXT_HALVING_BLOCK - blockHeight;
-  const avgBlockTime = 10 * 60; // ~10 minutes in seconds
-  const secondsUntilHalving = blocksUntilHalving * avgBlockTime;
-  const halvingDate = new Date(Date.now() + secondsUntilHalving * 1000);
+    const result: NetworkStats = {
+      block_height: blockHeight,
+      hash_rate: hashRate,
+      difficulty,
+      blocks_until_halving: blocksUntilHalving,
+      estimated_halving_date: halvingDate.toISOString(),
+      avg_block_time: avgBlockTime,
+    };
 
-  const result: NetworkStats = {
-    block_height: blockHeight,
-    hash_rate: hashRate,
-    difficulty,
-    blocks_until_halving: blocksUntilHalving,
-    estimated_halving_date: halvingDate.toISOString(),
-    avg_block_time: avgBlockTime,
-  };
-
-  setCache('network_stats', result);
-  return result;
+    return result;
+  });
 }
 
 // ============================================
@@ -226,40 +255,38 @@ export interface NewsItem {
 }
 
 export async function fetchNews(limit: number = 5): Promise<NewsItem[]> {
-  const cached = getCached<NewsItem[]>('news');
-  if (cached) return cached.slice(0, limit);
+  return getWithRevalidate('news', async () => {
+    try {
+      // Use CryptoCompare's free news API (no API key needed for basic access)
+      const response = await fetch(
+        'https://min-api.cryptocompare.com/data/v2/news/?lang=EN&categories=BTC'
+      );
 
-  try {
-    // Use CryptoCompare's free news API (no API key needed for basic access)
-    const response = await fetch(
-      'https://min-api.cryptocompare.com/data/v2/news/?lang=EN&categories=BTC'
-    );
+      if (response.ok) {
+        const data = await response.json();
+        if (data.Data && data.Data.length > 0) {
+          const result: NewsItem[] = data.Data.slice(0, 10).map((item: {
+            title: string;
+            url: string;
+            source: string;
+            published_on: number;
+          }) => ({
+            title: item.title,
+            url: item.url,
+            source: item.source,
+            published_at: new Date(item.published_on * 1000).toISOString(),
+          }));
 
-    if (response.ok) {
-      const data = await response.json();
-      if (data.Data && data.Data.length > 0) {
-        const result: NewsItem[] = data.Data.slice(0, 10).map((item: {
-          title: string;
-          url: string;
-          source: string;
-          published_on: number;
-        }) => ({
-          title: item.title,
-          url: item.url,
-          source: item.source,
-          published_at: new Date(item.published_on * 1000).toISOString(),
-        }));
-        
-        setCache('news', result);
-        return result.slice(0, limit);
+          return result;
+        }
       }
+    } catch (e) {
+      console.error('News fetch error:', e);
     }
-  } catch (e) {
-    console.error('News fetch error:', e);
-  }
 
-  // Fallback: Return empty array - frontend will hide the section
-  return [];
+    // Fallback: Return empty array - frontend will hide the section
+    return [];
+  });
 }
 
 // ============================================
