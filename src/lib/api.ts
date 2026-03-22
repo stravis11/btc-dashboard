@@ -207,22 +207,16 @@ const NEXT_HALVING_BLOCK = 1050000; // Block 1,050,000 (5th halving)
 
 export async function fetchNetworkStats(): Promise<NetworkStats> {
   return getWithRevalidate('network_stats', async () => {
-    // Fetch multiple stats from blockchain.com
-    const [heightRes, hashRateRes, difficultyRes] = await Promise.all([
-      fetch('https://blockchain.info/q/getblockcount'),
-      fetch('https://blockchain.info/q/hashrate'),
-      fetch('https://blockchain.info/q/getdifficulty'),
-    ]);
+    // Fetch from blockchair (blockchain.info deprecated their public stats API)
+    const response = await fetch('https://api.blockchair.com/bitcoin/stats');
+    if (!response.ok) throw new Error(`Blockchair API error: ${response.status}`);
+    const data = await response.json();
+    const d = data.data;
 
-    if (!heightRes.ok || !hashRateRes.ok || !difficultyRes.ok) {
-      throw new Error('Blockchain.info API error');
-    }
-
-    const blockHeight = parseInt(await heightRes.text(), 10);
-    const hashRateRaw = parseFloat(await hashRateRes.text());
-    // Blockchain.info returns GH/s, convert to EH/s for readability
-    const hashRate = hashRateRaw / 1e9; // Convert GH/s to EH/s
-    const difficulty = parseFloat(await difficultyRes.text());
+    const blockHeight = d.best_block_height;
+    // blockchair returns hashrate_24h in H/s — convert to EH/s
+    const hashRate = parseFloat(d.hashrate_24h) / 1e18;
+    const difficulty = d.difficulty;
 
     // Calculate halving info
     const blocksUntilHalving = NEXT_HALVING_BLOCK - blockHeight;
